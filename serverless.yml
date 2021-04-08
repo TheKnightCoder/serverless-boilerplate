@@ -1,0 +1,256 @@
+service: boiler-plate
+
+package:
+  exclude:
+    - '**'
+  include:
+    - src/**
+    - node_modules/**
+
+provider:
+  name: aws
+  runtime: nodejs14.x
+  stage: ${opt:stage, 'dev'}
+  stackName: ${self:service}-${self:provider.stage}
+  region: eu-west-1
+
+  iamRoleStatements:
+    # ===========Dynamodb permissions===========
+    - Effect: Allow
+      Action:
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+        - dynamodb:DescribeTable
+      Resource: "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.stackName}-*"
+
+    # # ===========Cognito permissions===========
+    # - Effect: Allow
+    #   Action:
+    #     - cognito-idp:*
+    #   Resource:
+    #     - '*'
+
+    # # ===========S3 Permissions===========
+    # - Effect: Allow
+    #   Action:
+    #     - s3:PutObject
+    #     - s3:GetObject
+    #     - s3:ListBucket
+    #     - s3:ListBucketVersions
+    #     - s3:PutObjectAcl
+    #   Resource:
+    #     - 'arn:aws:s3:::${self:custom.bucketName}'
+    #     - 'arn:aws:s3:::${self:custom.bucketName}/*'
+
+  environment:
+    mainTable: ${self:custom.mainTable}
+    bucketName: ${self:custom.bucketName}
+    
+custom:
+  userPool: ${self:provider.stackName}-user-pool
+  mainTable: ${self:provider.stackName}-main
+  bucketName: ${self:provider.stackName}-bucket
+
+functions:
+  landlordCreate:
+    handler: src/controllers/landlord/landlordCreate.handler
+    events:
+      - http:
+          method: post
+          path: /landlord/
+          # authorizer:
+          #   type: COGNITO_USER_POOLS
+          #   authorizerId:
+          #     Ref: ApiGatewayAuthorizer
+  landlordGet:
+    handler: src/controllers/landlord/landlordGet.handler
+    events:
+      - http:
+          method: get
+          path: /landlord/{landlordId}
+          # authorizer:
+          #   type: COGNITO_USER_POOLS
+          #   authorizerId:
+          #     Ref: ApiGatewayAuthorizer
+  landlordUpdate:
+    handler: src/controllers/landlord/landlordUpdate.handler
+    events:
+      - http:
+          method: patch
+          path: /landlord/{landlordId}
+          # authorizer:
+          #   type: COGNITO_USER_POOLS
+          #   authorizerId:
+          #     Ref: ApiGatewayAuthorizer
+  landlordDelete:
+    handler: src/controllers/landlord/landlordDelete.handler
+    events:
+      - http:
+          method: delete
+          path: /landlord/{landlordId}
+          # authorizer:
+          #   type: COGNITO_USER_POOLS
+          #   authorizerId:
+          #     Ref: ApiGatewayAuthorizer
+
+  # # ===========Cognito Triggers===========
+  # preSignUp:
+  #   handler: src/controllers/cognitoTriggers/preSignUp.handler
+  #   events:
+  #     - cognitoUserPool:
+  #         pool: ${self:custom.userPool}
+  #         trigger: PreSignUp
+  #         existing: true
+
+  # postConfirmation:
+  #   handler: src/controllers/cognitoTriggers/postConfirmation.handler
+  #   events:
+  #     - cognitoUserPool:
+  #         pool: ${self:custom.userPool}
+  #         trigger: PostConfirmation
+  #         existing: true
+
+resources:
+  Resources:
+
+    # # ===========Cognito User Pools===========
+    # CognitoUserPool:
+    #   Type: AWS::Cognito::UserPool
+    #   Properties:
+    #     AccountRecoverySetting:
+    #       RecoveryMechanisms:
+    #         - Name: verified_email
+    #           Priority: 1
+    #         - Name: verified_phone_number
+    #           Priority: 2
+    #     UserPoolName: ${self:provider.stackName}-user-pool
+    #     Schema:
+    #       - Name: accountType
+    #         Mutable: false
+    #         AttributeDataType: String
+    #     UsernameAttributes:
+    #       - email
+    #     # AutoVerifiedAttributes:
+    #       # - email
+    #     VerificationMessageTemplate:
+    #       DefaultEmailOption: CONFIRM_WITH_LINK
+    #     EmailVerificationSubject : "Your verification link"
+    #     EmailVerificationMessage : "Please click the link below to verify your email address. {####}"
+
+    # CognitoUserPoolClient:
+    #   Type: AWS::Cognito::UserPoolClient
+    #   Properties:
+    #     ClientName: ${self:custom.userPool}
+    #     UserPoolId:
+    #       Ref: CognitoUserPool
+    #     ExplicitAuthFlows:
+    #       # https://stackoverflow.com/questions/53755308/aws-cognito-admininitiateauth-vs-initiateauth
+    #       - ALLOW_USER_SRP_AUTH
+    #       - ALLOW_REFRESH_TOKEN_AUTH
+    #     GenerateSecret: false
+    #     PreventUserExistenceErrors: ENABLED
+    
+    # CognitoUserPoolDomain:
+    #   Type: AWS::Cognito::UserPoolDomain
+    #   Properties: 
+    #     Domain: ${self:provider.stackName}
+    #     UserPoolId: !Ref CognitoUserPool
+
+
+    # CognitoUserPoolGrouplandlord:
+    #   Type: AWS::Cognito::UserPoolGroup
+    #   Properties: 
+    #     GroupName: landlord
+    #     UserPoolId:
+    #       Ref: CognitoUserPool 
+
+    # CognitoUserPoolGroupEmployee:
+    #   Type: AWS::Cognito::UserPoolGroup
+    #   Properties: 
+    #     GroupName: employee
+    #     UserPoolId:
+    #       Ref: CognitoUserPool 
+
+    # ApiGatewayAuthorizer:
+    #   Type: AWS::ApiGateway::Authorizer
+    #   DependsOn:
+    #     - ApiGatewayRestApi
+    #   Properties:
+    #     Name: ${self:provider.stackName}-authorizer
+    #     RestApiId: !Ref ApiGatewayRestApi
+    #     IdentitySource: method.request.header.Authorization
+    #     Type: COGNITO_USER_POOLS
+    #     ProviderARNs:
+    #       - Fn::GetAtt: [CognitoUserPool, Arn]
+
+    #===========DynamoDb Table===========
+    MainTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.mainTable}
+        AttributeDefinitions:
+          - AttributeName: hashKey
+            AttributeType: S
+          - AttributeName: rangeKey
+            AttributeType: S
+        KeySchema:
+          - AttributeName: hashKey
+            KeyType: HASH
+          - AttributeName: rangeKey
+            KeyType: RANGE
+        BillingMode: PAY_PER_REQUEST
+        # StreamSpecification:
+        #   StreamViewType: NEW_AND_OLD_IMAGES
+        # GlobalSecondaryIndexes:
+        #   -
+        #     IndexName: BillingEngineIdIndex
+        #     KeySchema:
+        #       - AttributeName: hashKey
+        #         KeyType: HASH
+        #       - AttributeName: billingEngineId
+        #         KeyType: RANGE
+        #     Projection:
+        #       ProjectionType: INCLUDE
+        #       NonKeyAttributes:
+        #         - summary
+        #         - source
+
+    # #===========S3 Bucket===========
+    # Bucket:
+    #   Type: AWS::S3::Bucket
+    #   Properties:
+    #     BucketName: ${self:custom.bucketName}
+    #     BucketEncryption:
+    #       ServerSideEncryptionConfiguration:
+    #         - ServerSideEncryptionByDefault:
+    #             SSEAlgorithm: AES256
+    #     VersioningConfiguration:
+    #       Status: Enabled
+    #     CorsConfiguration:
+    #       CorsRules:
+    #         - AllowedHeaders: ['*']
+    #           AllowedMethods: [GET, PUT, HEAD, POST] #head and post probably not needed
+    #           AllowedOrigins: ['*']
+    #           Id: CORSRuleId1
+    #           MaxAge: '3600'
+
+    # # To make bucket public
+    # BucketAllowPublicReadPolicy:
+    #   Type: AWS::S3::BucketPolicy
+    #   Properties:
+    #     Bucket: !Ref Bucket
+    #     PolicyDocument:
+    #       Version: "2012-10-17"
+    #       Statement: 
+    #         - Effect: Allow
+    #           Action: 
+    #             - "s3:GetObject"
+    #           Resource: 
+    #             - !Join ['', ['arn:aws:s3:::', !Ref Bucket, '/*']]
+    #           Principal: "*"
+
+
